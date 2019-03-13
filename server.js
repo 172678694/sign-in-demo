@@ -1,5 +1,3 @@
-import { resolve } from 'dns';
-
 var http = require('http')
 var fs = require('fs')
 var url = require('url')
@@ -25,6 +23,38 @@ var server = http.createServer(function(request, response){
 
   if(path === '/'){
     let string = fs.readFileSync('./index.html','utf8')
+    console.log(request.headers.cookie)
+    let cookies = request.headers.cookie.split(';')//['sign_in_email=172678694@qq.com','a=1','b=2']
+    console.log(cookies)
+    let hash={}
+    for(i=0;i<cookies.length;i++){
+      let part = cookies[i].split('=') //['sign_in_email','172678694@qq.com']
+      console.log(part)
+      let key = part[0]
+      let value = part[1]
+      hash[key] = value
+    }
+    console.log(hash)
+    console.log(hash[' sign_in_email'])
+    let email = hash[' sign_in_email']
+    let users = fs.readFileSync('./db/users','utf8')
+    users = JSON.parse(users)
+    console.log(users)
+    console.log(users[0])
+    console.log(email)
+    let foundUser
+    for(i=0;i<users.length;i++){
+      if(users[i].email === email){
+        foundUser = users[i]
+        break
+      }
+    }
+    console.log(foundUser)
+    if(foundUser){
+      string=string.replace('__password__',foundUser.password)
+    }else{
+      string=string.replace('__password__','不知道')
+    }
     response.statusCode = 200
     response.setHeader('Content-Type', 'text/html;charset=utf-8')
     response.write(string)
@@ -47,7 +77,6 @@ var server = http.createServer(function(request, response){
         let value = part[1]
         hash[key]=decodeURIComponent(value)
       })
-      console.log(hash)
       let{email,password,password_confirmation} = hash
       
       if(email.indexOf('@')=== -1){
@@ -77,10 +106,13 @@ var server = http.createServer(function(request, response){
         }
         if(inUse){
           response.statusCode = 400
-          response.write('email in use')
+          response.setHeader('Content-Type','application/json;charset=utf-8')
+          response.write(`{
+            "errors":{"email":"in-use"}
+          }`)
+          console.log('in-use')
         }else{
           users.push({email:email,password:password})
-          console.log({email:email,password:password})
           var usersString = JSON.stringify(users)
           fs.writeFileSync('./db/users',usersString)
           response.statusCode = 200
@@ -88,17 +120,55 @@ var server = http.createServer(function(request, response){
       }
       response.end()
     })
-  }else if(path === 'sign_in' ){
-    let {email,password} = hash
-    var users = fa.readFileSync('./db/users',utf8)
-    try{
-      user = JSON.parse(users)
-    }catch(exception){
-      users = []
-    }
-    let found
-    
-  } else if(path === '/main.js'){
+  }else if(path === '/sign_in' && method === 'GET' ){
+    let string = fs.readFileSync('./sign_in.html','utf8')
+    response.statusCode = 200
+    response.setHeader('Content-Type', 'text/html;charset=utf-8')
+    response.write(string)
+    response.end()
+    // let {email,password} = hash
+    // var users = fa.readFileSync('./db/users',utf8)
+    // try{
+    //   user = JSON.parse(users)
+    // }catch(exception){
+    //   users = []
+    // }
+    // let found  
+  }else if(path === '/sign_in' && method === 'POST'){
+    readBody(request).then((body)=>{
+      let strings = body.split('&') //['email=1','password=2'.'password_confirmation=2'] 
+      let hash = {}
+      strings.forEach((string) => {
+        // string = 'email=1'
+        let part = string.split('=') //['email','1']
+        let key = part[0]
+        let value = part[1]
+        hash[key]=decodeURIComponent(value)
+      })
+      let{email,password} = hash
+      console.log(hash)
+      var users = fs.readFileSync('./db/users','utf8') //JSON
+      try{
+        users = JSON.parse(users) //[]
+      }catch(exception){
+        users = []
+      }
+      let found = false
+      for(i=0;i<users.length;i++){
+        if(email === users[i].email && password === users[i].password){
+          found = true
+          break
+        } 
+      }
+      if(found){
+        response.setHeader('Set-Cookie',`sign_in_email=${email}`)
+        response.statusCode = 200
+      }else{
+        response.statusCode = 401
+      }
+      response.end()
+    })
+  }else if(path === '/main.js'){
     let string = fs.readFileSync('./main.js','utf8')
     response.statusCode = 200
     response.setHeader('Content-Type', 'text/javascript;charset=utf-8')
@@ -133,7 +203,7 @@ function readBody(request){
     request.on('data',(chunk) =>{
       body.push(chunk);
     }).on('end',()=>{
-      body = Buffer.concat(body).toString;
+      body = Buffer.concat(body).toString();
       resolve(body)
     })
   })
